@@ -29,29 +29,40 @@ jobs:
       - name: Instalar componentes del SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Extraer y compilar el proyecto
+      - name: Encontrar y compilar el proyecto
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP_FILE="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
-          if [ -z "$ZIP_FILE" ]; then
-            echo "No encuentro el ZIP del proyecto en la raíz del repositorio."
-            exit 1
-          fi
-
           mkdir -p _build_src
-          unzip -q "$ZIP_FILE" -d _build_src
+          PROJECT_DIR=""
+          ZIP_COUNT=0
 
-          SETTINGS_FILE="$(find _build_src -type f -name settings.gradle.kts -print -quit)"
-          if [ -z "$SETTINGS_FILE" ]; then
-            echo "El ZIP no contiene settings.gradle.kts."
-            exit 1
-          fi
+          while IFS= read -r ZIP_FILE; do
+            ZIP_COUNT=$((ZIP_COUNT + 1))
+            CANDIDATE="_build_src/candidate_${ZIP_COUNT}"
+            mkdir -p "$CANDIDATE"
 
-          PROJECT_DIR="\((dirname "\)SETTINGS_FILE")"
-          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "No encuentro app/build.gradle.kts dentro del proyecto."
+            if ! unzip -q "\(ZIP_FILE" -d "\)CANDIDATE"; then
+              echo "Ignoro un ZIP que no se pudo extraer: $ZIP_FILE"
+              continue
+            fi
+
+            SETTINGS_FILE="\((find "\)CANDIDATE" -type f -name settings.gradle.kts -print -quit)"
+            if [ -z "$SETTINGS_FILE" ]; then
+              continue
+            fi
+
+            CANDIDATE_PROJECT="\((dirname "\)SETTINGS_FILE")"
+            if [ -f "$CANDIDATE_PROJECT/app/build.gradle.kts" ]; then
+              PROJECT_DIR="$CANDIDATE_PROJECT"
+              echo "Proyecto completo encontrado en: $ZIP_FILE"
+              break
+            fi
+          done < <(find . -maxdepth 1 -type f -iname '*.zip' -print)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Ningún ZIP de la raíz contiene settings.gradle.kts y app/build.gradle.kts juntos."
             exit 1
           fi
 
