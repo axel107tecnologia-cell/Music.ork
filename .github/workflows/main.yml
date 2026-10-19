@@ -29,7 +29,7 @@ jobs:
       - name: Instalar componentes del SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Extraer el proyecto del ZIP
+      - name: Extraer y compilar el proyecto
         shell: bash
         run: |
           set -euo pipefail
@@ -45,15 +45,18 @@ jobs:
 
           SETTINGS_FILE="$(find _build_src -type f -name settings.gradle.kts -print -quit)"
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "El ZIP no contiene settings.gradle.kts; revisa que hayas subido el proyecto correcto."
+            echo "El ZIP no contiene settings.gradle.kts."
             exit 1
           fi
 
           PROJECT_DIR="\((dirname "\)SETTINGS_FILE")"
-          echo "PROJECT_DIR=\(PROJECT_DIR" >> "\)GITHUB_ENV"
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "No encuentro app/build.gradle.kts dentro del proyecto."
+            exit 1
+          fi
 
-      - name: Compilar el APK
-        run: gradle -p "$PROJECT_DIR" assembleDebug
+          cd "$PROJECT_DIR"
+          gradle assembleDebug --stacktrace --no-daemon
 
       - name: Guardar el APK para descargar
         uses: actions/upload-artifact@v4
