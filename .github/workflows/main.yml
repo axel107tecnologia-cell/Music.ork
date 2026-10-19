@@ -43,7 +43,8 @@ jobs:
             CANDIDATE="_build_src/candidate_${ZIP_COUNT}"
             mkdir -p "$CANDIDATE"
 
-            if ! unzip -q "\(ZIP_FILE" -d "\)CANDIDATE"; then
+            if ! unzip -q "./AO-MUSIC-ORK404-proyecto.zip" -d "$CANDIDATE"
+            "; then
               echo "Ignoro un ZIP que no se pudo extraer: $ZIP_FILE"
               continue
             fi
