@@ -32,43 +32,62 @@ jobs:
       - name: Encontrar y compilar el proyecto
         shell: bash
         run: |
-          set -euo pipefail
+          python3 - <<'PY'
+          import glob
+          import os
+          import subprocess
+          import zipfile
 
-          mkdir -p _build_src
-          PROJECT_DIR=""
-          ZIP_COUNT=0
+          os.makedirs("_build_src", exist_ok=True)
+          project_dir = None
 
-          while IFS= read -r ZIP_FILE; do
-            ZIP_COUNT=$((ZIP_COUNT + 1))
-            CANDIDATE="_build_src/candidate_${ZIP_COUNT}"
-            mkdir -p "$CANDIDATE"
+          for archive in glob.glob("./*.zip"):
+              destination = os.path.join(
+                  "_build_src",
+                  os.path.basename(archive) + "_contents"
+              )
+              os.makedirs(destination, exist_ok=True)
 
-            if ! unzip -q "./AO-MUSIC-ORK404-proyecto.zip" -d "$CANDIDATE"
-            "; then
-              echo "Ignoro un ZIP que no se pudo extraer: $ZIP_FILE"
-              continue
-            fi
+              try:
+                  with zipfile.ZipFile(archive) as zipped:
+                      names = set(zipped.namelist())
+                      prefix_found = None
 
-            SETTINGS_FILE="\((find "\)CANDIDATE" -type f -name settings.gradle.kts -print -quit)"
-            if [ -z "$SETTINGS_FILE" ]; then
-              continue
-            fi
+                      for settings_file in names:
+                          if settings_file.endswith("settings.gradle.kts"):
+                              prefix = settings_file[:-len("settings.gradle.kts")]
+                              app_build_file = prefix + "app/build.gradle.kts"
 
-            CANDIDATE_PROJECT="\((dirname "\)SETTINGS_FILE")"
-            if [ -f "$CANDIDATE_PROJECT/app/build.gradle.kts" ]; then
-              PROJECT_DIR="$CANDIDATE_PROJECT"
-              echo "Proyecto completo encontrado en: $ZIP_FILE"
-              break
-            fi
-          done < <(find . -maxdepth 1 -type f -iname '*.zip' -print)
+                              if app_build_file in names:
+                                  prefix_found = prefix
+                                  break
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Ningún ZIP de la raíz contiene settings.gradle.kts y app/build.gradle.kts juntos."
-            exit 1
-          fi
+                      if prefix_found is None:
+                          print(f"El ZIP no tiene la estructura esperada: {archive}")
+                          continue
 
-          cd "$PROJECT_DIR"
-          gradle assembleDebug --stacktrace --no-daemon
+                      zipped.extractall(destination)
+                      project_dir = os.path.abspath(
+                          os.path.join(destination, prefix_found.rstrip("/"))
+                      )
+                      print(f"Proyecto encontrado en: {archive}")
+                      break
+
+              except zipfile.BadZipFile:
+                  print(f"El archivo no es un ZIP válido: {archive}")
+
+          if project_dir is None:
+              raise SystemExit(
+                  "No encontré un ZIP que contenga settings.gradle.kts "
+                  "y app/build.gradle.kts."
+              )
+
+          subprocess.run(
+              ["gradle", "assembleDebug", "--stacktrace", "--no-daemon"],
+              cwd=project_dir,
+              check=True
+          )
+          PY
 
       - name: Guardar el APK para descargar
         uses: actions/upload-artifact@v4
